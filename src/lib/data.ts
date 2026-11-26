@@ -17,16 +17,33 @@ export type Product = {
   is_new?: boolean;
 };
 
-type TierVariation = { option_list?: { image?: { image_url?: string } }[] };
-export function extractSkuImage(tierVariation: unknown): string | null {
+type TierVariation = { option_list?: { option?: string; image?: { image_url?: string } }[] };
+const DARK_COLOR_RE = /\b(đen|den|black)\b/i;
+
+/**
+ * Chọn ảnh SKU sạch và phân bổ đa dạng màu theo itemId (tránh toàn màu đen ở vị trí option[0]),
+ * đảm bảo deterministic giữa SSR và client (không lỗi hydration).
+ */
+export function extractSkuImage(tierVariation: unknown, itemId = 0): string | null {
   if (!Array.isArray(tierVariation)) return null;
+  const all: { label: string; url: string }[] = [];
+  const seen = new Set<string>();
   for (const tier of tierVariation as TierVariation[]) {
     for (const opt of tier?.option_list ?? []) {
       const url = opt?.image?.image_url;
-      if (typeof url === "string" && url.startsWith("http")) return url;
+      if (typeof url === "string" && url.startsWith("http") && !seen.has(url)) {
+        seen.add(url);
+        all.push({ label: opt?.option ?? "", url });
+      }
     }
   }
-  return null;
+  if (!all.length) return null;
+  const nonDark = all.filter((x) => !DARK_COLOR_RE.test(x.label));
+  // Ưu tiên màu sáng/pastel (~80% sản phẩm), giữ lại ~20% màu đen làm điểm nhấn tự nhiên.
+  const useNonDark = nonDark.length > 0 && Math.abs(itemId % 5) !== 0;
+  const pool = useNonDark ? nonDark : all;
+  const seed = Math.abs((itemId * 2654435761) >>> 0);
+  return pool[seed % pool.length].url;
 }
 export type Variant = {
   model_id: number;
@@ -125,11 +142,39 @@ export async function listProducts(opts: { cat?: number; q?: string; page?: numb
   if (error) throw error;
   const now = Date.now();
   const items: Product[] = (data ?? []).map(({ product_variants, tier_variation, ...p }) => ({ ...p,
-    sku_image: extractSkuImage(tier_variation),
+    sku_image: extractSkuImage(tier_variation, p.item_id),
     is_new: !!p.shopee_created_at && Date.parse(p.shopee_created_at) > now - 30 * 86400000 && Date.parse(p.shopee_created_at) <= now,
     original_price: product_variants.find((v) => v.price === p.min_price && v.original_price != null && v.price != null && v.original_price > v.price)?.original_price ?? null,
   }));
   return { items, total: count ?? 0, page, pages: Math.max(1, Math.ceil((count ?? 0) / pageSize)) };
+}
+
+/** Tải danh sách sản phẩm theo thứ tự tuyển chọn (kèm ảnh SKU nền trắng/xám đã xác minh). */
+export async function listCuratedProducts(entries: readonly { item_id: number; sku_image: string }[]): Promise<Product[]> {
+  if (!entries.length) return [];
+  const ids = entries.map((e) => e.item_id);
+  const { data, error } = await supabase
+    .from("products")
+    .select("item_id,name,images,tier_variation,min_price,max_price,category_id,total_stock,shopee_created_at,product_variants(price,original_price)")
+    .in("item_id", ids);
+  if (error) throw error;
+  const now = Date.now();
+  const byId = new Map<number, Product>();
+  for (const row of data ?? []) {
+    const { product_variants, tier_variation, ...p } = row;
+    byId.set(p.item_id, {
+      ...p,
+      sku_image: extractSkuImage(tier_variation, p.item_id),
+      is_new: !!p.shopee_created_at && Date.parse(p.shopee_created_at) > now - 30 * 86400000 && Date.parse(p.shopee_created_at) <= now,
+      original_price: product_variants.find((v) => v.price === p.min_price && v.original_price != null && v.price != null && v.original_price > v.price)?.original_price ?? null,
+    });
+  }
+  const ordered: Product[] = [];
+  for (const entry of entries) {
+    const found = byId.get(entry.item_id);
+    if (found) ordered.push({ ...found, sku_image: entry.sku_image });
+  }
+  return ordered;
 }
 
 export async function getCatalogCategories() {

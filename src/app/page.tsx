@@ -1,7 +1,8 @@
 import { createMetadata, websiteJsonLd } from "@/lib/seo";
 import { JsonLd } from "@/components/JsonLd";
 import Link from "next/link";
-import { getCatalogCategories, listProducts } from "@/lib/data";
+import { getCatalogCategories, listCuratedProducts, listProducts } from "@/lib/data";
+import { HOME_CURATED_SHOWCASE } from "@/lib/home-showcase-curated";
 import { Container } from "@/components/ui/Container";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { Hero, CollectionBanners, ProductCarousel } from "@/components/HomeShowcase";
@@ -10,12 +11,12 @@ import { RecentlyViewed } from "@/components/recommend/RecentlyViewed";
 export function generateMetadata() { return createMetadata({ title: "Balo, túi xách và vali đồng hành mỗi ngày", description: "Khám phá balo, túi xách và vali tại Freshbag. Chọn mẫu cho đi học, đi làm hay du lịch, đặt hàng COD và nhận hỗ trợ bảo hành 6 tháng lỗi nhà sản xuất.", path: "/" }); }
 export const revalidate = 300;
 export default async function Home() {
-  const [categories, latest, bags] = await Promise.all([
+  const [categories, curated, fallback] = await Promise.all([
     getCatalogCategories(),
+    listCuratedProducts(HOME_CURATED_SHOWCASE),
     listProducts({ sort: "newest", limit: 27 }),
-    listProducts({ cat: 100016, limit: 27 }),
   ]);
-  const products = bags.items.length >= 9 ? bags.items : latest.items;
+  const products = curated.length >= 9 ? curated : fallback.items;
   const catCount = (id: number) => categories.find((c) => c.id === id)?.count ?? 0;
   const heroSlides = [
     {
