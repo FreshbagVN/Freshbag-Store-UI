@@ -1,11 +1,9 @@
 ﻿import Link from "next/link";
 import { vnd, type Product } from "@/lib/data";
 import { Badge } from "./ui/Badge";
-import { SimilarSheet } from "./recommend/SimilarSheet";
 
 export default function ProductCard({
   p,
-  showSimilarAction = true,
 }: {
   p: Product;
   showSimilarAction?: boolean;
@@ -22,13 +20,5 @@ export default function ProductCard({
       </div>
       <div className="product-info"><h3>{p.name}</h3><div className="product-prices"><span>{range ? `${vnd(p.min_price)} – ${vnd(p.max_price)}` : vnd(p.min_price)}</span>{discount > 0 && <del>{vnd(p.original_price)}</del>}</div></div>
     </Link>
-    {showSimilarAction && (
-      <SimilarSheet
-        productId={p.item_id}
-        productName={p.name}
-        variant="card"
-        label="Mẫu tương tự"
-      />
-    )}
   </div>;
 }

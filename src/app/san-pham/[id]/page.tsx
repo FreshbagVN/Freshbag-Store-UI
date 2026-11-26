@@ -38,7 +38,6 @@ export default async function ProductPage({ params }: Props) {
   const images: string[] = p.images ?? [];
   const blocks: Block[] = p.description_blocks ?? (p.description ? [{ type: "text", text: p.description }] : []);
   const specs: [string, string][] = [...productSpecs(p), ...(category ? [["Danh mục", category.name] as [string, string]] : [])];
-  const video = (p.video as { video_url: string; thumbnail_url?: string }[] | null)?.[0];
   const [related, similarItems, shopCount, settings] = await Promise.all([
     listProducts({ cat: category?.id ?? p.category_id }),
     getSimilarProducts(p.item_id, 12),
@@ -63,7 +62,7 @@ export default async function ProductPage({ params }: Props) {
     }
   }
   const galleryImages = [...new Set([...images, ...Object.values(variantImages)])];
-  const media: ProductMedia[] = [...(video?.video_url ? [{ type: "video" as const, src: video.video_url, poster: video.thumbnail_url || images[0] }] : []), ...galleryImages.map(src => ({ type: "image" as const, src }))];
+  const media: ProductMedia[] = galleryImages.map(src => ({ type: "image" as const, src }));
   const sold = typeof p.sold === "number" && Number.isFinite(p.sold) && p.sold >= 0 ? p.sold : null;
   const originalPrice = variants.find(v => v.price === p.min_price && v.original_price != null && v.price != null && v.original_price > v.price)?.original_price ?? null;
   const path = `/san-pham/${p.item_id}`;
