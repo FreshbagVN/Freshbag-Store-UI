@@ -8,9 +8,12 @@ const eslintConfig = defineConfig([
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
-    ".next/**",
+    "**/.next/**", // OpenNext tr?n Windows c? th? sinh cache l?ng trong web/.next.
     "out/**",
     "build/**",
+    ".open-next/**",
+    ".wrangler/**",
+    "cloudflare-env.d.ts",
     "next-env.d.ts",
   ]),
 ]);
