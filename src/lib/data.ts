@@ -7,6 +7,7 @@ export type Product = {
   item_id: number;
   name: string;
   images: string[];
+  sku_image?: string | null;
   min_price: number | null;
   max_price: number | null;
   category_id: number;
@@ -15,6 +16,18 @@ export type Product = {
   original_price?: number | null;
   is_new?: boolean;
 };
+
+type TierVariation = { option_list?: { image?: { image_url?: string } }[] };
+export function extractSkuImage(tierVariation: unknown): string | null {
+  if (!Array.isArray(tierVariation)) return null;
+  for (const tier of tierVariation as TierVariation[]) {
+    for (const opt of tier?.option_list ?? []) {
+      const url = opt?.image?.image_url;
+      if (typeof url === "string" && url.startsWith("http")) return url;
+    }
+  }
+  return null;
+}
 export type Variant = {
   model_id: number;
   name: string | null;
@@ -77,11 +90,12 @@ export async function descendantIds(rootId: number): Promise<number[]> {
   return [...out];
 }
 
-export async function listProducts(opts: { cat?: number; q?: string; page?: number; sort?: string; min?: number; max?: number; sale?: boolean }) {
+export async function listProducts(opts: { cat?: number; q?: string; page?: number; sort?: string; min?: number; max?: number; sale?: boolean; limit?: number }) {
   const page = Number.isSafeInteger(opts.page) ? Math.max(1, Math.min(10000, opts.page!)) : 1;
+  const pageSize = opts.limit && Number.isSafeInteger(opts.limit) ? Math.max(1, Math.min(60, opts.limit)) : PAGE_SIZE;
   let query = supabase
     .from("products")
-    .select("item_id,name,images,min_price,max_price,category_id,total_stock,shopee_created_at,product_variants(price,original_price)", { count: "exact" });
+    .select("item_id,name,images,tier_variation,min_price,max_price,category_id,total_stock,shopee_created_at,product_variants(price,original_price)", { count: "exact" });
   if (opts.cat) query = query.in("category_id", await descendantIds(opts.cat));
   if (opts.q) query = query.ilike("name", `%${opts.q.replace(/[%,()]/g, " ")}%`);
   if (opts.min != null && Number.isFinite(opts.min)) query = query.gte("min_price", opts.min);
@@ -106,15 +120,16 @@ export async function listProducts(opts: { cat?: number; q?: string; page?: numb
   else if (opts.sort === "newest") query = query.order("shopee_created_at", { ascending: false, nullsFirst: false });
   else query = query.order("shopee_updated_at", { ascending: false });
   query = query.order("item_id", { ascending: false });
-  const from = (page - 1) * PAGE_SIZE;
-  const { data, count, error } = await query.range(from, from + PAGE_SIZE - 1);
+  const from = (page - 1) * pageSize;
+  const { data, count, error } = await query.range(from, from + pageSize - 1);
   if (error) throw error;
   const now = Date.now();
-  const items: Product[] = (data ?? []).map(({ product_variants, ...p }) => ({ ...p,
+  const items: Product[] = (data ?? []).map(({ product_variants, tier_variation, ...p }) => ({ ...p,
+    sku_image: extractSkuImage(tier_variation),
     is_new: !!p.shopee_created_at && Date.parse(p.shopee_created_at) > now - 30 * 86400000 && Date.parse(p.shopee_created_at) <= now,
     original_price: product_variants.find((v) => v.price === p.min_price && v.original_price != null && v.price != null && v.original_price > v.price)?.original_price ?? null,
   }));
-  return { items, total: count ?? 0, page, pages: Math.max(1, Math.ceil((count ?? 0) / PAGE_SIZE)) };
+  return { items, total: count ?? 0, page, pages: Math.max(1, Math.ceil((count ?? 0) / pageSize)) };
 }
 
 export async function getCatalogCategories() {

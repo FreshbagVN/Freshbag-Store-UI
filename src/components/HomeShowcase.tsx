@@ -20,7 +20,7 @@ export function Hero({ slides }: { slides: HeroSlide[] }) {
   }, []);
   useEffect(() => {
     if (reduced || hovered || slides.length < 2) return;
-    const timer = window.setInterval(() => setActive((i) => (i + 1) % slides.length), 6000);
+    const timer = window.setInterval(() => setActive((i) => (i + 1) % slides.length), 3600);
     return () => window.clearInterval(timer);
   }, [reduced, hovered, slides.length]);
   const move = (delta: number) => setActive((active + delta + slides.length) % slides.length);
@@ -36,10 +36,15 @@ export function CollectionBanners({ items }: { items: { title: string; caption: 
 }
 export function ProductCarousel({ products }: { products: Product[] }) {
   const ref = useRef<HTMLDivElement>(null);
+  const touchResumeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [paused, setPaused] = useState(false);
   const [reduced, setReduced] = useState(false);
   const [activePage, setActivePage] = useState(0);
   const [pageCount, setPageCount] = useState(1);
+
+  useEffect(() => () => {
+    if (touchResumeTimer.current) clearTimeout(touchResumeTimer.current);
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -74,7 +79,8 @@ export function ProductCarousel({ products }: { products: Product[] }) {
     const maxScroll = el.scrollWidth - el.clientWidth;
     if (maxScroll <= 4) return;
     const firstCard = el.firstElementChild as HTMLElement | null;
-    const distance = byCard && firstCard ? firstCard.offsetWidth + 20 : Math.max(el.clientWidth * 0.85, 280);
+    const colGap = parseFloat(window.getComputedStyle(el).columnGap) || 20;
+    const distance = byCard && firstCard ? firstCard.offsetWidth + colGap : Math.max(el.clientWidth * 0.95, 280);
     if (delta > 0 && el.scrollLeft >= maxScroll - 8) {
       el.scrollTo({ left: 0, behavior });
     } else if (delta < 0 && el.scrollLeft <= 8) {
@@ -85,7 +91,7 @@ export function ProductCarousel({ products }: { products: Product[] }) {
   };
 
   useEffect(() => {
-    if (paused || reduced || products.length <= 4) return;
+    if (paused || reduced || products.length <= 6) return;
     const timer = window.setInterval(() => step(1, true), 3800);
     return () => window.clearInterval(timer);
   });
@@ -98,13 +104,22 @@ export function ProductCarousel({ products }: { products: Product[] }) {
     el.scrollTo({ left: target, behavior: reduced ? "instant" : "smooth" });
   };
 
+  const pauseForTouch = () => {
+    if (touchResumeTimer.current) clearTimeout(touchResumeTimer.current);
+    setPaused(true);
+  };
+  const resumeAfterTouch = () => {
+    if (touchResumeTimer.current) clearTimeout(touchResumeTimer.current);
+    touchResumeTimer.current = setTimeout(() => setPaused(false), 5000);
+  };
+
   return (
     <div
       className="product-carousel"
       onMouseEnter={() => setPaused(true)}
       onMouseLeave={() => setPaused(false)}
-      onPointerDown={() => setPaused(true)}
-      onPointerUp={() => setPaused(false)}
+      onTouchStart={pauseForTouch}
+      onTouchEnd={resumeAfterTouch}
       onFocusCapture={() => setPaused(true)}
       onBlurCapture={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node)) setPaused(false); }}
     >
